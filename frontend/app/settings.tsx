@@ -8,6 +8,10 @@ import Slider from "@react-native-community/slider";
 
 import { makeStyles, useTheme } from "@/src/theme";
 import {
+  isScreenTranslatorAvailable,
+  resetOverlayPosition,
+} from "../modules/screen-translator";
+import {
   AUTO_STOP_OPTIONS,
   AutoStop,
   CADENCE_OPTIONS,
@@ -106,6 +110,18 @@ const useStyles = makeStyles((c) => ({
   segmentTextActive: { color: c.onBrandPrimary },
 
   sliderRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  secondaryBtn: {
+    minHeight: 48,
+    borderRadius: 14,
+    backgroundColor: c.surfaceTertiary,
+    borderWidth: 1,
+    borderColor: c.divider,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  secondaryBtnText: { fontSize: 15, fontWeight: "600", color: c.onSurface },
   sliderValue: {
     width: 48,
     textAlign: "right",
@@ -192,6 +208,17 @@ export default function SettingsScreen() {
 
   const pct = Math.round(overlay.opacity * 100);
   const fontSize = textSizeSp(overlay.textSize);
+
+  const [resetMsg, setResetMsg] = useState<string | null>(null);
+  const resetPosition = async () => {
+    Haptics.selectionAsync().catch(() => {});
+    if (!isScreenTranslatorAvailable) {
+      setResetMsg("Available in the Android app build.");
+      return;
+    }
+    await resetOverlayPosition();
+    setResetMsg("Panel will appear in the top-left corner.");
+  };
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -296,6 +323,23 @@ export default function SettingsScreen() {
                 {pct}%
               </Text>
             </View>
+          </View>
+
+          {/* Reset position */}
+          <View>
+            <Pressable
+              testID="reset-position-button"
+              onPress={resetPosition}
+              style={styles.secondaryBtn}
+            >
+              <Icon name="arrow-top-left" size={18} color={colors.onSurface} />
+              <Text style={styles.secondaryBtnText}>Reset panel position</Text>
+            </Pressable>
+            {resetMsg && (
+              <Text style={[styles.optionDesc, { textAlign: "center", marginTop: 8 }]} testID="reset-position-msg">
+                {resetMsg}
+              </Text>
+            )}
           </View>
         </View>
 

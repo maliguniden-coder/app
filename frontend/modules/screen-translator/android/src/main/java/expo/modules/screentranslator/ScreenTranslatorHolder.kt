@@ -20,5 +20,10 @@ object ScreenTranslatorHolder {
     var autoStopMs: Long = 0L
     /** True while the capture service is alive. */
     @Volatile var isRunning: Boolean = false
+    // Session stats (reset when a new session starts, kept after stop for "last session").
+    @Volatile var sessionScreens: Int = 0
+    @Volatile var sessionWords: Int = 0
+    @Volatile var sessionStartedAt: Long = 0L
+    @Volatile var sessionStoppedAt: Long = 0L
     var launcher: ActivityResultLauncher<Unit>? = null
 }

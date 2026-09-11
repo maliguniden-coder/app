@@ -25,7 +25,23 @@ type Native = {
   startCapture: (options: CaptureOptions) => Promise<boolean>;
   stopCapture: () => Promise<boolean>;
   getActiveTarget: () => Promise<OverlayLang | null>;
+  getSessionStats: () => Promise<SessionStats>;
+  resetOverlayPosition: () => Promise<boolean>;
 };
+
+export type SessionStats = {
+  /** Screens (frames) that came back with at least one text block. */
+  screens: number;
+  /** Words in all translated blocks this session. */
+  words: number;
+  /** Epoch ms when the current/last session started; 0 if never. */
+  startedAt: number;
+  /** Epoch ms when the last session stopped; 0 while running. */
+  stoppedAt: number;
+  running: boolean;
+};
+
+const EMPTY_STATS: SessionStats = { screens: 0, words: 0, startedAt: 0, stoppedAt: 0, running: false };
 
 const native = requireOptionalNativeModule<Native>("ScreenTranslator");
 
@@ -55,4 +71,15 @@ export async function stopCapture(): Promise<boolean> {
 export async function getActiveTarget(): Promise<OverlayLang | null> {
   if (!native) return null;
   return native.getActiveTarget();
+}
+
+export async function getSessionStats(): Promise<SessionStats> {
+  if (!native) return EMPTY_STATS;
+  return native.getSessionStats();
+}
+
+/** Forgets the saved panel position; a visible panel snaps back to the default corner. */
+export async function resetOverlayPosition(): Promise<boolean> {
+  if (!native) return false;
+  return native.resetOverlayPosition();
 }

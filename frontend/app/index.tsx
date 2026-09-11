@@ -8,6 +8,7 @@ import {
   View,
 } from "react-native";
 import { router, useFocusEffect } from "expo-router";
+import { useQuery } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
@@ -28,8 +29,11 @@ import {
   textSizeSp,
 } from "@/src/prefs";
 import { queryClient } from "@/src/query-client";
+import { fetchGlossary } from "@/src/glossary";
 import {
+  SessionStats,
   getActiveTarget,
+  getSessionStats,
   hasOverlayPermission,
   isScreenTranslatorAvailable,
   requestOverlayPermission,
@@ -153,7 +157,33 @@ const useStyles = makeStyles((c) => ({
   },
   warnTitle: { fontSize: 13, fontWeight: "700", color: c.onSurface },
   warnBody: { fontSize: 12, color: c.muted, marginTop: 2, lineHeight: 18 },
+
+  statsRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  statCell: {
+    flex: 1,
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  statValue: {
+    fontSize: 22,
+    fontWeight: "800",
+    letterSpacing: -0.5,
+    fontVariant: ["tabular-nums"],
+  },
+  statLabel: { fontSize: 11, fontWeight: "600", letterSpacing: 0.4, marginTop: 2 },
 }));
+
+function formatDuration(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  if (m >= 60) return `${Math.floor(m / 60)}h ${m % 60}m`;
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
 
 async function loadTarget(): Promise<Lang> {
   try {
@@ -196,8 +226,32 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
   const [overlayOK, setOverlayOK] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [stats, setStats] = useState<SessionStats | null>(null);
+  const [now, setNow] = useState(Date.now());
 
   const nativeReady = isScreenTranslatorAvailable;
+
+  const { data: glossary } = useQuery({ queryKey: ["glossary"], queryFn: fetchGlossary });
+
+  // Poll session stats while the overlay runs so the hero card stays live.
+  useEffect(() => {
+    if (!nativeReady) return;
+    let cancelled = false;
+    const tick = async () => {
+      const s = await getSessionStats().catch(() => null);
+      if (!cancelled && s) {
+        setStats(s);
+        setNow(Date.now());
+        if (!s.running && running) setRunning(false);
+      }
+    };
+    tick();
+    const id = running ? setInterval(tick, 2000) : null;
+    return () => {
+      cancelled = true;
+      if (id) clearInterval(id);
+    };
+  }, [nativeReady, running]);
 
   useFocusEffect(
     useCallback(() => {
@@ -359,6 +413,36 @@ export default function Home() {
               : "We capture your screen, detect the language, and float translations on top of everything else."}
           </Text>
 
+          {/* Session stats */}
+          {stats && (running || stats.screens > 0) && (
+            <View style={styles.statsRow} testID="session-stats">
+              <View style={[styles.statCell, { backgroundColor: "rgba(0,0,0,0.22)" }]}>
+                <Text style={[styles.statValue, { color: "#fff" }]} testID="stat-screens">
+                  {stats.screens}
+                </Text>
+                <Text style={[styles.statLabel, { color: "rgba(255,255,255,0.8)" }]}>
+                  SCREENS
+                </Text>
+              </View>
+              <View style={[styles.statCell, { backgroundColor: "rgba(0,0,0,0.22)" }]}>
+                <Text style={[styles.statValue, { color: "#fff" }]} testID="stat-words">
+                  {stats.words.toLocaleString()}
+                </Text>
+                <Text style={[styles.statLabel, { color: "rgba(255,255,255,0.8)" }]}>
+                  WORDS
+                </Text>
+              </View>
+              <View style={[styles.statCell, { backgroundColor: "rgba(0,0,0,0.22)" }]}>
+                <Text style={[styles.statValue, { color: "#fff" }]} testID="stat-duration">
+                  {formatDuration((running ? now : stats.stoppedAt) - stats.startedAt)}
+                </Text>
+                <Text style={[styles.statLabel, { color: "rgba(255,255,255,0.8)" }]}>
+                  {running ? "ELAPSED" : "LAST SESSION"}
+                </Text>
+              </View>
+            </View>
+          )}
+
           <Pressable
             testID={running ? "stop-capture-button" : "start-capture-button"}
             onPress={running ? stop : start}
@@ -410,6 +494,23 @@ export default function Home() {
               <Icon name="chevron-right" size={20} color={colors.muted} />
             </Pressable>
           </View>
+          <Pressable
+            testID="glossary-row"
+            onPress={() => router.push("/glossary")}
+            style={styles.row}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={styles.rowLabel}>GLOSSARY</Text>
+              <Text style={glossary?.length ? styles.rowValue : styles.rowValueMuted}>
+                {glossary === undefined
+                  ? "…"
+                  : glossary.length === 0
+                    ? "Pin names to translate consistently"
+                    : `${glossary.length} pinned ${glossary.length === 1 ? "term" : "terms"}`}
+              </Text>
+            </View>
+            <Icon name="book-open-page-variant-outline" size={20} color={colors.muted} />
+          </Pressable>
           <Pressable
             testID="cadence-row"
             onPress={openSettings}

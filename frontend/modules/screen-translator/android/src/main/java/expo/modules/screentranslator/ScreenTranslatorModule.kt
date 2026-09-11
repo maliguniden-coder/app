@@ -84,6 +84,22 @@ class ScreenTranslatorModule : Module() {
             )
         }
 
+        AsyncFunction("getSessionStats") {
+            mapOf(
+                "screens" to ScreenTranslatorHolder.sessionScreens,
+                "words" to ScreenTranslatorHolder.sessionWords,
+                "startedAt" to ScreenTranslatorHolder.sessionStartedAt.toDouble(),
+                "stoppedAt" to ScreenTranslatorHolder.sessionStoppedAt.toDouble(),
+                "running" to ScreenTranslatorHolder.isRunning,
+            )
+        }
+
+        AsyncFunction("resetOverlayPosition") {
+            val ctx = appContext.reactContext ?: return@AsyncFunction false
+            FloatingOverlayManager.resetPosition(ctx)
+            true
+        }
+
         OnActivityResult { _, payload ->
             if (payload.requestCode != REQ_CAPTURE) return@OnActivityResult
             val ctx = appContext.reactContext ?: return@OnActivityResult

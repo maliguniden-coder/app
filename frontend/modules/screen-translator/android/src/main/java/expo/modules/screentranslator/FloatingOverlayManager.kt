@@ -339,6 +339,16 @@ object FloatingOverlayManager {
         renderTitle()
     }
 
+    /** Clears the remembered position; if the panel is on screen it snaps back to the default corner. */
+    fun resetPosition(ctx: Context) {
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(KEY_X).remove(KEY_Y).apply()
+        val lp = params ?: return
+        val panel = container ?: return
+        lp.x = dp(ctx, 16f).toInt()
+        lp.y = dp(ctx, 80f).toInt()
+        try { wm?.updateViewLayout(panel, lp) } catch (_: Throwable) {}
+    }
+
     private fun renderTitle() {
         val parts = mutableListOf("LensTranslate")
         if (status.isNotEmpty()) parts.add(status)

@@ -93,6 +93,21 @@ class HistoryItem(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+class GlossaryTerm(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    term: str
+    translation: str
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class GlossaryCreate(BaseModel):
+    term: str = Field(min_length=1, max_length=80)
+    translation: str = Field(min_length=1, max_length=120)
+
+
+MAX_GLOSSARY_TERMS = 200
+
+
 def _strip_data_url(b64: str) -> str:
     if b64.startswith("data:"):
         return b64.split(",", 1)[1]
@@ -157,6 +172,16 @@ async def translate(req: TranslateRequest):
         "Detect the source language and translate every text block. "
         "Return ONLY the JSON described in the system prompt."
     )
+
+    # User glossary: game-specific names that must always translate the same way.
+    glossary = await db.glossary.find({}, {"_id": 0, "term": 1, "translation": 1}).to_list(MAX_GLOSSARY_TERMS)
+    if glossary:
+        rules = "\n".join(f'- "{g["term"]}" -> "{g["translation"]}"' for g in glossary)
+        user_prompt += (
+            "\n\nGLOSSARY (mandatory): whenever any of these terms appears in the source text "
+            "(match case-insensitively, including inside longer phrases), use EXACTLY the given "
+            "translation instead of translating it yourself:\n" + rules
+        )
 
     chat = LlmChat(
         api_key=EMERGENT_LLM_KEY,
@@ -233,6 +258,44 @@ async def delete_history(item_id: str):
 @api_router.delete("/history")
 async def clear_history():
     res = await db.translations.delete_many({})
+    return {"deleted": res.deleted_count}
+
+
+# ---------- Glossary ----------
+
+@api_router.get("/glossary", response_model=List[GlossaryTerm])
+async def list_glossary():
+    docs = await db.glossary.find({}, {"_id": 0}).sort("created_at", -1).to_list(MAX_GLOSSARY_TERMS)
+    return [GlossaryTerm(**d) for d in docs]
+
+
+@api_router.post("/glossary", response_model=GlossaryTerm, status_code=201)
+async def add_glossary(body: GlossaryCreate):
+    term = body.term.strip()
+    translation = body.translation.strip()
+    if not term or not translation:
+        raise HTTPException(status_code=422, detail="Term and translation are required")
+    count = await db.glossary.count_documents({})
+    if count >= MAX_GLOSSARY_TERMS:
+        raise HTTPException(status_code=400, detail=f"Glossary is limited to {MAX_GLOSSARY_TERMS} terms")
+    # One translation per term: replace an existing entry with the same term.
+    existing = await db.glossary.find_one(
+        {"term": {"$regex": f"^{re.escape(term)}$", "$options": "i"}}, {"_id": 0}
+    )
+    if existing:
+        await db.glossary.update_one({"id": existing["id"]}, {"$set": {"translation": translation, "term": term}})
+        existing.update({"translation": translation, "term": term})
+        return GlossaryTerm(**existing)
+    item = GlossaryTerm(term=term, translation=translation)
+    await db.glossary.insert_one(item.dict())
+    return item
+
+
+@api_router.delete("/glossary/{term_id}")
+async def delete_glossary(term_id: str):
+    res = await db.glossary.delete_one({"id": term_id})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Term not found")
     return {"deleted": res.deleted_count}
 
 

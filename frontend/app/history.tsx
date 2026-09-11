@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Animated,
   FlatList,
+  Platform,
   Pressable,
   Text,
   TextInput,
@@ -15,6 +16,8 @@ import Icon from "@react-native-vector-icons/material-design-icons";
 import { Image } from "expo-image";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
+import * as Sharing from "expo-sharing";
+import { File, Paths } from "expo-file-system";
 
 import { makeStyles, useTheme } from "@/src/theme";
 
@@ -37,6 +40,21 @@ async function fetchHistory(): Promise<HistoryItem[]> {
 
 async function clearAll() {
   await fetch(`${BACKEND}/api/history`, { method: "DELETE" });
+}
+
+function buildExportText(items: HistoryItem[]): string {
+  const lines = [
+    "LensTranslate — Translation history",
+    `Exported ${new Date().toLocaleString()} · ${items.length} ${items.length === 1 ? "entry" : "entries"}`,
+    "",
+  ];
+  for (const i of items) {
+    lines.push(`[${formatDate(i.created_at)}] ${i.detected_language} → ${i.target_lang_name}`);
+    lines.push(i.original_text);
+    lines.push(`→ ${i.translated_text}`);
+    lines.push("");
+  }
+  return lines.join("\n");
 }
 
 const useStyles = makeStyles((c) => ({
@@ -251,6 +269,8 @@ export default function HistoryScreen() {
   };
 
   const [toast, setToast] = useState(false);
+  const [toastMsg, setToastMsg] = useState("");
+  const [exporting, setExporting] = useState(false);
   const toastAnim = useRef(new Animated.Value(0)).current;
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -263,6 +283,11 @@ export default function HistoryScreen() {
   const copy = async (text: string) => {
     await Clipboard.setStringAsync(text);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    showToast("Copied to clipboard");
+  };
+
+  const showToast = (msg: string) => {
+    setToastMsg(msg);
     setToast(true);
     Animated.timing(toastAnim, { toValue: 1, duration: 160, useNativeDriver: true }).start();
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -270,7 +295,33 @@ export default function HistoryScreen() {
       Animated.timing(toastAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start(
         () => setToast(false),
       );
-    }, 1500);
+    }, 1800);
+  };
+
+  const exportHistory = async () => {
+    if (!data?.length || exporting) return;
+    setExporting(true);
+    Haptics.selectionAsync().catch(() => {});
+    const text = buildExportText(data);
+    try {
+      const canShare = Platform.OS !== "web" && (await Sharing.isAvailableAsync());
+      if (canShare) {
+        const file = new File(Paths.cache, "lenstranslate-history.txt");
+        file.write(text);
+        await Sharing.shareAsync(file.uri, {
+          mimeType: "text/plain",
+          dialogTitle: "Export translation history",
+          UTI: "public.plain-text",
+        });
+      } else {
+        await Clipboard.setStringAsync(text);
+        showToast("History copied — paste it anywhere");
+      }
+    } catch {
+      showToast("Could not export history");
+    } finally {
+      setExporting(false);
+    }
   };
 
   const empty = !isLoading && (!data || data.length === 0);
@@ -300,13 +351,28 @@ export default function HistoryScreen() {
         </Pressable>
         <Text style={styles.title}>History</Text>
         {!empty && (
-          <Pressable
-            testID="history-clear-button"
-            onPress={doClear}
-            style={styles.clearBtn}
-          >
-            <Text style={styles.clearText}>Clear</Text>
-          </Pressable>
+          <>
+            <Pressable
+              testID="history-export-button"
+              onPress={exportHistory}
+              disabled={exporting}
+              style={styles.iconBtn}
+              accessibilityLabel="Export history"
+            >
+              {exporting ? (
+                <ActivityIndicator size="small" color={colors.onSurface} />
+              ) : (
+                <Icon name="export-variant" size={18} color={colors.onSurface} />
+              )}
+            </Pressable>
+            <Pressable
+              testID="history-clear-button"
+              onPress={doClear}
+              style={styles.clearBtn}
+            >
+              <Text style={styles.clearText}>Clear</Text>
+            </Pressable>
+          </>
         )}
       </View>
 
@@ -429,7 +495,7 @@ export default function HistoryScreen() {
           ]}
         >
           <Icon name="check-circle" size={18} color={colors.success} />
-          <Text style={styles.toastText}>Copied to clipboard</Text>
+          <Text style={styles.toastText}>{toastMsg}</Text>
         </Animated.View>
       )}
     </View>

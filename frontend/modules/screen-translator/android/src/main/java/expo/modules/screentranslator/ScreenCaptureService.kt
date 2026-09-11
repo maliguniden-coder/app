@@ -102,6 +102,10 @@ class ScreenCaptureService : Service() {
         )
         running = true
         ScreenTranslatorHolder.isRunning = true
+        ScreenTranslatorHolder.sessionScreens = 0
+        ScreenTranslatorHolder.sessionWords = 0
+        ScreenTranslatorHolder.sessionStartedAt = System.currentTimeMillis()
+        ScreenTranslatorHolder.sessionStoppedAt = 0L
         handler.postDelayed(captureLoop, 800)
         scheduleAutoStop(ScreenTranslatorHolder.autoStopMs)
         return START_STICKY
@@ -231,6 +235,11 @@ class ScreenCaptureService : Service() {
                     )
                 }
                 val detected = json.optString("detected_language", "")
+                val translatedBlocks = list.filter { it.translated.isNotBlank() }
+                if (translatedBlocks.isNotEmpty()) {
+                    ScreenTranslatorHolder.sessionScreens += 1
+                    ScreenTranslatorHolder.sessionWords += translatedBlocks.sumOf { countWords(it.translated) }
+                }
                 handler.post {
                     FloatingOverlayManager.updateBlocks(applicationContext, list, detected)
                 }
@@ -247,6 +256,23 @@ class ScreenCaptureService : Service() {
                 handler.post { if (running) captureFrame(force = true) }
             }
         }
+    }
+
+    /** Whitespace-delimited words; CJK scripts have no spaces, so each ideograph counts as a word. */
+    private fun countWords(text: String): Int {
+        var count = 0
+        for (token in text.trim().split(Regex("\\s+"))) {
+            if (token.isEmpty()) continue
+            val cjk = token.count { ch ->
+                val b = Character.UnicodeBlock.of(ch)
+                b == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS ||
+                    b == Character.UnicodeBlock.HIRAGANA ||
+                    b == Character.UnicodeBlock.KATAKANA ||
+                    b == Character.UnicodeBlock.HANGUL_SYLLABLES
+            }
+            count += if (cjk > 0) cjk + (if (cjk < token.length) 1 else 0) else 1
+        }
+        return count
     }
 
     private fun startForegroundNotif() {
@@ -281,6 +307,7 @@ class ScreenCaptureService : Service() {
     override fun onDestroy() {
         running = false
         ScreenTranslatorHolder.isRunning = false
+        ScreenTranslatorHolder.sessionStoppedAt = System.currentTimeMillis()
         handler.removeCallbacksAndMessages(null)
         try { virtualDisplay?.release() } catch (_: Throwable) {}
         try { imageReader?.close() } catch (_: Throwable) {}
