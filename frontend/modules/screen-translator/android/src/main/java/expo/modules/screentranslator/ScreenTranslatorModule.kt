@@ -39,7 +39,7 @@ class ScreenTranslatorModule : Module() {
             promise.resolve(false)
         }
 
-        AsyncFunction("startCapture") { targetLang: String, targetLangName: String, backendUrl: String, promise: Promise ->
+        AsyncFunction("startCapture") { targetLang: String, targetLangName: String, backendUrl: String, intervalMs: Int, promise: Promise ->
             val ctx = appContext.reactContext
             val activity: Activity? = appContext.activityProvider?.currentActivity
             if (ctx == null || activity == null) {
@@ -51,6 +51,7 @@ class ScreenTranslatorModule : Module() {
             ScreenTranslatorHolder.pendingLang = targetLang
             ScreenTranslatorHolder.pendingLangName = targetLangName
             ScreenTranslatorHolder.pendingBackend = backendUrl
+            ScreenTranslatorHolder.pendingIntervalMs = intervalMs.toLong()
             startPromise = promise
 
             val mpm = ctx.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager

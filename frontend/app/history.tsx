@@ -1,6 +1,7 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Animated,
   FlatList,
   Pressable,
   Text,
@@ -11,6 +12,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Icon from "@react-native-vector-icons/material-design-icons";
 import { Image } from "expo-image";
+import * as Clipboard from "expo-clipboard";
+import * as Haptics from "expo-haptics";
 
 import { makeStyles, useTheme } from "@/src/theme";
 
@@ -109,6 +112,28 @@ const useStyles = makeStyles((c) => ({
   },
   emptyTitle: { fontSize: 18, fontWeight: "700", color: c.onSurface },
   emptySub: { fontSize: 14, color: c.muted, textAlign: "center" },
+  copyHint: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginTop: 10,
+    alignSelf: "flex-end",
+  },
+  copyHintText: { fontSize: 12, color: c.muted, fontWeight: "600" },
+  toast: {
+    position: "absolute",
+    left: 24,
+    right: 24,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 999,
+    backgroundColor: c.surfaceInverse,
+  },
+  toastText: { fontSize: 14, fontWeight: "600", color: c.onSurfaceInverse },
 }));
 
 function formatDate(iso: string) {
@@ -145,6 +170,29 @@ export default function HistoryScreen() {
   const doClear = async () => {
     await clearAll();
     qc.setQueryData(["history"], []);
+  };
+
+  const [toast, setToast] = useState(false);
+  const toastAnim = useRef(new Animated.Value(0)).current;
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+    };
+  }, []);
+
+  const copy = async (text: string) => {
+    await Clipboard.setStringAsync(text);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    setToast(true);
+    Animated.timing(toastAnim, { toValue: 1, duration: 160, useNativeDriver: true }).start();
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => {
+      Animated.timing(toastAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start(
+        () => setToast(false),
+      );
+    }, 1500);
   };
 
   const empty = !isLoading && (!data || data.length === 0);
@@ -193,7 +241,11 @@ export default function HistoryScreen() {
           keyExtractor={(i) => i.id}
           contentContainerStyle={{ paddingBottom: insets.bottom + 24, paddingTop: 4 }}
           renderItem={({ item }) => (
-            <View style={styles.card} testID={`history-item-${item.id}`}>
+            <Pressable
+              style={styles.card}
+              testID={`history-item-${item.id}`}
+              onPress={() => copy(item.translated_text)}
+            >
               <View style={styles.metaRow}>
                 <View style={styles.pill}>
                   <Text style={styles.pillText}>
@@ -209,9 +261,33 @@ export default function HistoryScreen() {
               <Text style={styles.translated} numberOfLines={6}>
                 {item.translated_text}
               </Text>
-            </View>
+              <View style={styles.copyHint}>
+                <Icon name="content-copy" size={13} color={colors.muted} />
+                <Text style={styles.copyHintText}>Tap to copy</Text>
+              </View>
+            </Pressable>
           )}
         />
+      )}
+
+      {toast && (
+        <Animated.View
+          testID="copied-toast"
+          pointerEvents="none"
+          style={[
+            styles.toast,
+            {
+              bottom: insets.bottom + 24,
+              opacity: toastAnim,
+              transform: [
+                { translateY: toastAnim.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) },
+              ],
+            },
+          ]}
+        >
+          <Icon name="check-circle" size={18} color={colors.success} />
+          <Text style={styles.toastText}>Copied to clipboard</Text>
+        </Animated.View>
       )}
     </View>
   );

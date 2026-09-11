@@ -1,19 +1,21 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  FlatList,
   Pressable,
+  SectionList,
   Text,
   TextInput,
   View,
 } from "react-native";
 import { useQuery } from "@tanstack/react-query";
-import { router, useLocalSearchParams } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Icon from "@react-native-vector-icons/material-design-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Haptics from "expo-haptics";
 
 import { makeStyles, useTheme } from "@/src/theme";
+import { loadFavorites, toggleFavorite } from "@/src/prefs";
 
 const BACKEND = process.env.EXPO_PUBLIC_BACKEND_URL;
 
@@ -61,9 +63,20 @@ const useStyles = makeStyles((c) => ({
     color: c.onSurface,
     padding: 0,
   },
-  row: {
+  sectionHeader: {
     paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingTop: 16,
+    paddingBottom: 8,
+    backgroundColor: c.surface,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  sectionText: { fontSize: 12, fontWeight: "700", color: c.muted, letterSpacing: 0.6 },
+  row: {
+    paddingLeft: 20,
+    paddingRight: 8,
+    paddingVertical: 8,
     flexDirection: "row",
     alignItems: "center",
     borderBottomWidth: 1,
@@ -71,8 +84,14 @@ const useStyles = makeStyles((c) => ({
     minHeight: 56,
   },
   rowText: { flex: 1, fontSize: 16, color: c.onSurface },
-  rowCode: { fontSize: 13, color: c.muted, marginRight: 12 },
+  rowCode: { fontSize: 13, color: c.muted, marginRight: 4 },
   selectedRow: { backgroundColor: c.brandTertiary },
+  starBtn: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
 }));
 
@@ -82,26 +101,44 @@ export default function LanguagesScreen() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ current?: string }>();
   const [query, setQuery] = useState("");
+  const [favs, setFavs] = useState<string[]>([]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadFavorites().then(setFavs);
+    }, []),
+  );
 
   const { data, isLoading } = useQuery({
     queryKey: ["languages"],
     queryFn: fetchLanguages,
   });
 
-  const filtered = useMemo(() => {
+  const sections = useMemo(() => {
     if (!data) return [];
     const q = query.trim().toLowerCase();
-    if (!q) return data.filter((l) => l.code !== "auto");
-    return data.filter(
+    const all = data.filter(
       (l) =>
         l.code !== "auto" &&
-        (l.name.toLowerCase().includes(q) || l.code.toLowerCase().includes(q)),
+        (!q || l.name.toLowerCase().includes(q) || l.code.toLowerCase().includes(q)),
     );
-  }, [data, query]);
+    const favSet = new Set(favs);
+    const favorites = all.filter((l) => favSet.has(l.code));
+    const rest = all.filter((l) => !favSet.has(l.code));
+    const out: { key: string; title: string; data: Lang[] }[] = [];
+    if (favorites.length) out.push({ key: "fav", title: "FAVORITES", data: favorites });
+    if (rest.length) out.push({ key: "all", title: favorites.length ? "ALL LANGUAGES" : "", data: rest });
+    return out;
+  }, [data, query, favs]);
 
   const pick = async (l: Lang) => {
     await AsyncStorage.setItem("target-lang", JSON.stringify(l));
     router.back();
+  };
+
+  const star = async (code: string) => {
+    Haptics.selectionAsync().catch(() => {});
+    setFavs(await toggleFavorite(code));
   };
 
   return (
@@ -134,12 +171,24 @@ export default function LanguagesScreen() {
           <ActivityIndicator color={colors.brandPrimary} />
         </View>
       ) : (
-        <FlatList
-          data={filtered}
-          keyExtractor={(item) => item.code}
+        <SectionList
+          sections={sections}
+          keyExtractor={(item, index) => `${item.code}-${index}`}
+          stickySectionHeadersEnabled={false}
           contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
+          renderSectionHeader={({ section }) =>
+            section.title ? (
+              <View style={styles.sectionHeader} testID={`section-${section.key}`}>
+                {section.key === "fav" && (
+                  <Icon name="star" size={14} color={colors.warning} />
+                )}
+                <Text style={styles.sectionText}>{section.title}</Text>
+              </View>
+            ) : null
+          }
           renderItem={({ item }) => {
             const selected = params.current === item.code;
+            const fav = favs.includes(item.code);
             return (
               <Pressable
                 testID={`language-row-${item.code}`}
@@ -151,6 +200,18 @@ export default function LanguagesScreen() {
                 {selected && (
                   <Icon name="check" size={20} color={colors.brandPrimary} />
                 )}
+                <Pressable
+                  testID={`favorite-toggle-${item.code}`}
+                  onPress={() => star(item.code)}
+                  hitSlop={6}
+                  style={styles.starBtn}
+                >
+                  <Icon
+                    name={fav ? "star" : "star-outline"}
+                    size={22}
+                    color={fav ? colors.warning : colors.muted}
+                  />
+                </Pressable>
               </Pressable>
             );
           }}

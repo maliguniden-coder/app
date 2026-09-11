@@ -35,7 +35,6 @@ class ScreenCaptureService : Service() {
         const val EXTRA_RESULT_DATA = "resultData"
         const val CHANNEL_ID = "screen_translator"
         const val NOTIF_ID = 4211
-        const val CAPTURE_INTERVAL_MS = 3500L
     }
 
     private var projection: MediaProjection? = null
@@ -44,6 +43,10 @@ class ScreenCaptureService : Service() {
     private var handler: Handler = Handler(Looper.getMainLooper())
     private var running = false
     private var busy = false
+    private var intervalMs = 5000L
+    private var manual = false
+    /** Last frame we managed to grab; reused for manual refresh when the screen hasn't changed. */
+    private var lastFrameB64: String? = null
     private var width = 720
     private var height = 1280
     private var density = 320
@@ -80,9 +83,15 @@ class ScreenCaptureService : Service() {
             imageReader?.surface, null, null
         )
 
-        FloatingOverlayManager.show(applicationContext) {
-            stopSelf()
-        }
+        intervalMs = ScreenTranslatorHolder.pendingIntervalMs
+        manual = intervalMs <= 0L
+
+        FloatingOverlayManager.show(
+            applicationContext,
+            manual = manual,
+            onRefresh = { if (running && !busy) captureFrame(force = true) },
+            onClose = { stopSelf() },
+        )
         running = true
         handler.postDelayed(captureLoop, 800)
         return START_STICKY
@@ -91,21 +100,36 @@ class ScreenCaptureService : Service() {
     private val captureLoop = object : Runnable {
         override fun run() {
             if (!running) return
-            if (!busy) captureFrame()
-            handler.postDelayed(this, CAPTURE_INTERVAL_MS)
+            if (!busy) captureFrame(force = manual)
+            if (!manual) handler.postDelayed(this, intervalMs)
         }
     }
 
-    private fun captureFrame() {
+    /**
+     * Grabs the newest frame and ships it for translation. MediaProjection only emits a
+     * frame when the screen content changes, so in manual mode (`force`) we fall back to
+     * the last captured frame if nothing new is available.
+     */
+    private fun captureFrame(force: Boolean = false) {
         val reader = imageReader ?: return
         val img: Image? = try { reader.acquireLatestImage() } catch (_: Throwable) { null }
-        if (img == null) return
+        if (img == null) {
+            val cached = lastFrameB64
+            if (force && cached != null) {
+                busy = true
+                FloatingOverlayManager.setStatus(applicationContext, "Translating…")
+                Thread { translateAndRender(cached) }.start()
+            }
+            return
+        }
         busy = true
         try {
             val bitmap = imageToBitmap(img)
             img.close()
             val base64 = bitmapToBase64(bitmap)
             bitmap.recycle()
+            lastFrameB64 = base64
+            if (manual) FloatingOverlayManager.setStatus(applicationContext, "Translating…")
             Thread { translateAndRender(base64) }.start()
         } catch (t: Throwable) {
             busy = false
@@ -179,10 +203,12 @@ class ScreenCaptureService : Service() {
                 handler.post {
                     FloatingOverlayManager.updateBlocks(applicationContext, list, detected)
                 }
+            } else {
+                handler.post { FloatingOverlayManager.setStatus(applicationContext, "") }
             }
             conn.disconnect()
         } catch (_: Throwable) {
-            // swallow, next frame will retry
+            handler.post { FloatingOverlayManager.setStatus(applicationContext, "") }
         } finally {
             busy = false
         }

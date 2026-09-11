@@ -15,6 +15,7 @@ import Icon from "@react-native-vector-icons/material-design-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { makeStyles, toggleColorScheme, useTheme } from "@/src/theme";
+import { Cadence, cadenceLabel, cadenceMs, loadCadence } from "@/src/prefs";
 import {
   hasOverlayPermission,
   isScreenTranslatorAvailable,
@@ -155,6 +156,7 @@ export default function Home() {
   const insets = useSafeAreaInsets();
 
   const [target, setTarget] = useState<Lang>(DEFAULT_TARGET);
+  const [cadence, setCadence] = useState<Cadence>("5s");
   const [running, setRunning] = useState(false);
   const [busy, setBusy] = useState(false);
   const [overlayOK, setOverlayOK] = useState(false);
@@ -165,6 +167,7 @@ export default function Home() {
   useFocusEffect(
     useCallback(() => {
       loadTarget().then(setTarget);
+      loadCadence().then(setCadence);
       if (nativeReady) {
         hasOverlayPermission().then(setOverlayOK);
       }
@@ -197,7 +200,7 @@ export default function Home() {
     setBusy(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
     try {
-      const ok = await startCapture(target.code, target.name, BACKEND);
+      const ok = await startCapture(target.code, target.name, BACKEND, cadenceMs(cadence));
       setRunning(ok);
       if (!ok) setError("Screen capture was cancelled.");
     } catch (e: any) {
@@ -216,6 +219,7 @@ export default function Home() {
   const openLangs = () =>
     router.push({ pathname: "/languages", params: { current: target.code } });
   const openHistory = () => router.push("/history");
+  const openSettings = () => router.push("/settings");
   const toggleTheme = () => {
     Haptics.selectionAsync().catch(() => {});
     toggleColorScheme();
@@ -237,6 +241,13 @@ export default function Home() {
           style={styles.iconBtn}
         >
           <Icon name="history" size={20} color={colors.onSurface} />
+        </Pressable>
+        <Pressable
+          testID="settings-button"
+          onPress={openSettings}
+          style={styles.iconBtn}
+        >
+          <Icon name="cog-outline" size={20} color={colors.onSurface} />
         </Pressable>
         <Pressable
           testID="theme-toggle-button"
@@ -342,6 +353,17 @@ export default function Home() {
               <Icon name="chevron-right" size={20} color={colors.muted} />
             </Pressable>
           </View>
+          <Pressable
+            testID="cadence-row"
+            onPress={openSettings}
+            style={styles.row}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={styles.rowLabel}>CAPTURE CADENCE</Text>
+              <Text style={styles.rowValue}>{cadenceLabel(cadence)}</Text>
+            </View>
+            <Icon name="tune-variant" size={20} color={colors.muted} />
+          </Pressable>
         </View>
 
         {/* Error / info banner */}
@@ -371,15 +393,15 @@ export default function Home() {
           <View style={styles.bullet}>
             <View style={styles.bulletDot} />
             <Text style={styles.bulletText}>
-              Switch to any app or game. LensTranslate reads what's on your screen every
+              Switch to any app or game. LensTranslate reads what&apos;s on your screen every
               few seconds.
             </Text>
           </View>
           <View style={styles.bullet}>
             <View style={styles.bulletDot} />
             <Text style={styles.bulletText}>
-              A floating panel appears with the translated text. Drag it up, down, left
-              or right so the app below stays fully usable.
+              A floating panel appears with the translated text. Drag it anywhere, or
+              tap the lock icon to pin it in place while you play.
             </Text>
           </View>
           <View style={styles.bullet}>

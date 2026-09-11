@@ -8,6 +8,7 @@ type Native = {
     targetLang: string,
     targetLangName: string,
     backendUrl: string,
+    intervalMs: number,
   ) => Promise<boolean>;
   stopCapture: () => Promise<boolean>;
 };
@@ -26,13 +27,15 @@ export async function requestOverlayPermission(): Promise<boolean> {
   return native.requestOverlayPermission();
 }
 
+/** `intervalMs` = 0 means manual mode (refresh button on the floating panel). */
 export async function startCapture(
   targetLang: string,
   targetLangName: string,
   backendUrl: string,
+  intervalMs: number,
 ): Promise<boolean> {
   if (!native) return false;
-  return native.startCapture(targetLang, targetLangName, backendUrl);
+  return native.startCapture(targetLang, targetLangName, backendUrl, intervalMs);
 }
 
 export async function stopCapture(): Promise<boolean> {

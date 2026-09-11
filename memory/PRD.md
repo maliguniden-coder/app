@@ -11,13 +11,17 @@ Android app that translates text in *any* other app / game running on the phone.
 - **108 target languages** with searchable picker
 - **Translation history** — saved server-side, browsable, clearable
 - **Light / Dark theme toggle**, persisted across launches
+- **Favorite languages** — star languages in the picker; pinned in a Favorites section on top (AsyncStorage `fav-langs`)
+- **Capture cadence** — Settings sheet: Every 2s / Every 5s / Manual (AsyncStorage `capture-cadence`). Manual adds a ↻ button on the floating panel; last frame is reused if the screen hasn't changed
+- **Pin overlay** — lock icon on the floating panel header disables dragging (Kotlin, `FloatingOverlayManager`)
+- **Copy from history** — tap any history card to copy the translation (expo-clipboard) with toast + haptic
 
 ## Non-goals
 - iOS live screen translation (Apple blocks reading other apps)
 - Continuous per-frame translation (~3.5s cadence keeps cost + battery reasonable)
 
 ## Architecture
-- **Frontend**: Expo Router with `_layout.tsx`, `index.tsx`, `languages.tsx`, `history.tsx`
+- **Frontend**: Expo Router with `_layout.tsx`, `index.tsx`, `languages.tsx`, `history.tsx`, `settings.tsx`; prefs helpers in `src/prefs.ts`
 - **Native**: local Expo module `modules/screen-translator` (Kotlin) with
   - `ScreenTranslatorModule` — JS bridge
   - `ScreenCaptureService` — foreground service using `MediaProjection`

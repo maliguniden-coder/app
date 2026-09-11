@@ -26,6 +26,7 @@ function ThemedStack() {
         <Stack.Screen name="index" />
         <Stack.Screen name="languages" options={{ presentation: "modal" }} />
         <Stack.Screen name="history" options={{ presentation: "modal" }} />
+        <Stack.Screen name="settings" options={{ presentation: "modal" }} />
       </Stack>
     </View>
   );

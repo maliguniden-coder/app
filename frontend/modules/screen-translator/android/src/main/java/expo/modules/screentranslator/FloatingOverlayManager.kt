@@ -12,13 +12,15 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 
 /**
  * Draws a draggable floating panel over other apps. It contains translated text
  * blocks stacked vertically. The panel can be dragged up/down/left/right so the
- * app below stays usable, and a close button ends the session.
+ * app below stays usable, pinned in place with the lock button, refreshed on
+ * demand (manual cadence), and closed to end the session.
  */
 object FloatingOverlayManager {
 
@@ -33,13 +35,29 @@ object FloatingOverlayManager {
     private var container: FrameLayout? = null
     private var body: LinearLayout? = null
     private var titleView: TextView? = null
+    private var lockView: ImageView? = null
+    private var handleView: View? = null
     private var params: WindowManager.LayoutParams? = null
     private var wm: WindowManager? = null
 
-    fun show(ctx: Context, onClose: () -> Unit) {
+    private var pinned = false
+    private var detectedLang = ""
+    private var status = ""
+
+    private val ACCENT = Color.rgb(124, 224, 130)
+
+    fun show(
+        ctx: Context,
+        manual: Boolean,
+        onRefresh: () -> Unit,
+        onClose: () -> Unit,
+    ) {
         if (container != null) return
         val windowManager = ctx.getSystemService(Context.WINDOW_SERVICE) as WindowManager
         wm = windowManager
+        pinned = false
+        detectedLang = ""
+        status = ""
 
         val dm = DisplayMetrics()
         @Suppress("DEPRECATION")
@@ -58,7 +76,7 @@ object FloatingOverlayManager {
             orientation = LinearLayout.VERTICAL
         }
 
-        // Header row: drag handle + title + close.
+        // Header row: drag handle + title + [refresh] + lock + close.
         val header = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -69,20 +87,44 @@ object FloatingOverlayManager {
         val handleLp = LinearLayout.LayoutParams(dp(ctx, 40f).toInt(), dp(ctx, 5f).toInt())
         handleLp.marginEnd = dp(ctx, 10f).toInt()
         header.addView(handle, handleLp)
+        handleView = handle
 
         val title = TextView(ctx).apply {
             text = "LensTranslate"
             setTextColor(Color.WHITE)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+            maxLines = 1
         }
         header.addView(title, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         titleView = title
+
+        if (manual) {
+            val refresh = iconButton(ctx, android.R.drawable.ic_popup_sync, "Refresh translation")
+            refresh.setOnClickListener {
+                setStatus(ctx, "Capturing…")
+                onRefresh()
+            }
+            header.addView(refresh)
+        }
+
+        val lock = iconButton(ctx, android.R.drawable.ic_lock_lock, "Pin overlay")
+        lock.alpha = 0.55f
+        lock.setOnClickListener {
+            pinned = !pinned
+            applyPinnedStyle()
+            renderTitle()
+        }
+        header.addView(lock)
+        lockView = lock
 
         val close = TextView(ctx).apply {
             text = "✕"
             setTextColor(Color.WHITE)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
-            setPadding(dp(ctx, 8f).toInt(), dp(ctx, 2f).toInt(), dp(ctx, 8f).toInt(), dp(ctx, 4f).toInt())
+            gravity = Gravity.CENTER
+            minWidth = dp(ctx, 40f).toInt()
+            minHeight = dp(ctx, 40f).toInt()
+            contentDescription = "Stop translation"
         }
         close.setOnClickListener {
             dismiss(ctx)
@@ -121,12 +163,13 @@ object FloatingOverlayManager {
         lp.y = dp(ctx, 80f).toInt()
         params = lp
 
-        // Drag anywhere on the header.
+        // Drag anywhere on the header — unless the panel is pinned.
         var startX = 0
         var startY = 0
         var startRawX = 0f
         var startRawY = 0f
         header.setOnTouchListener { _, ev ->
+            if (pinned) return@setOnTouchListener false
             when (ev.action) {
                 MotionEvent.ACTION_DOWN -> {
                     startX = lp.x
@@ -146,15 +189,18 @@ object FloatingOverlayManager {
         }
 
         windowManager.addView(panel, lp)
+        if (manual) updateBlocks(ctx, emptyList(), "", "Tap ↻ to translate what's on screen")
     }
 
-    fun updateBlocks(ctx: Context, blocks: List<OverlayBlock>, detected: String) {
+    fun updateBlocks(ctx: Context, blocks: List<OverlayBlock>, detected: String, emptyText: String = "Scanning for text…") {
         val body = this.body ?: return
-        titleView?.text = if (detected.isNotEmpty()) "LensTranslate • $detected" else "LensTranslate"
+        detectedLang = detected
+        status = ""
+        renderTitle()
         body.removeAllViews()
-        if (blocks.isEmpty()) {
+        if (blocks.none { it.translated.isNotBlank() }) {
             val empty = TextView(ctx).apply {
-                text = "Scanning for text…"
+                text = emptyText
                 setTextColor(Color.argb(200, 200, 200, 200))
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
             }
@@ -183,6 +229,42 @@ object FloatingOverlayManager {
         }
     }
 
+    /** Short transient status shown in the title (e.g. "Translating…"). Empty clears it. */
+    fun setStatus(ctx: Context, text: String) {
+        status = text
+        renderTitle()
+    }
+
+    private fun renderTitle() {
+        val parts = mutableListOf("LensTranslate")
+        if (status.isNotEmpty()) parts.add(status)
+        else if (detectedLang.isNotEmpty()) parts.add(detectedLang)
+        if (pinned) parts.add("Pinned")
+        titleView?.text = parts.joinToString(" • ")
+    }
+
+    private fun applyPinnedStyle() {
+        lockView?.apply {
+            alpha = if (pinned) 1f else 0.55f
+            setColorFilter(if (pinned) ACCENT else Color.WHITE)
+            contentDescription = if (pinned) "Unpin overlay" else "Pin overlay"
+        }
+        handleView?.setBackgroundColor(
+            if (pinned) Color.argb(120, 200, 200, 200) else Color.argb(200, 200, 200, 200)
+        )
+    }
+
+    private fun iconButton(ctx: Context, resId: Int, description: String): ImageView =
+        ImageView(ctx).apply {
+            setImageResource(resId)
+            setColorFilter(Color.WHITE)
+            contentDescription = description
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            val pad = dp(ctx, 9f).toInt()
+            setPadding(pad, pad, pad, pad)
+            layoutParams = LinearLayout.LayoutParams(dp(ctx, 40f).toInt(), dp(ctx, 40f).toInt())
+        }
+
     fun dismiss(ctx: Context) {
         try {
             container?.let { wm?.removeView(it) }
@@ -190,7 +272,10 @@ object FloatingOverlayManager {
         container = null
         body = null
         titleView = null
+        lockView = null
+        handleView = null
         params = null
+        pinned = false
     }
 
     private fun dp(ctx: Context, v: Float): Float =
