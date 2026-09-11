@@ -1,12 +1,26 @@
 import { useEffect, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Icon from "@react-native-vector-icons/material-design-icons";
 import * as Haptics from "expo-haptics";
+import Slider from "@react-native-community/slider";
 
 import { makeStyles, useTheme } from "@/src/theme";
-import { CADENCE_OPTIONS, Cadence, loadCadence, saveCadence } from "@/src/prefs";
+import {
+  CADENCE_OPTIONS,
+  Cadence,
+  DEFAULT_OVERLAY,
+  MIN_OPACITY,
+  OverlayPrefs,
+  TEXT_SIZE_OPTIONS,
+  TextSize,
+  loadCadence,
+  loadOverlayPrefs,
+  saveCadence,
+  saveOverlayPrefs,
+  textSizeSp,
+} from "@/src/prefs";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -35,6 +49,7 @@ const useStyles = makeStyles((c) => ({
     color: c.muted,
     letterSpacing: 0.6,
     marginBottom: 4,
+    marginTop: 8,
   },
   option: {
     flexDirection: "row",
@@ -59,23 +74,112 @@ const useStyles = makeStyles((c) => ({
   optionLabel: { fontSize: 16, fontWeight: "700", color: c.onSurface },
   optionDesc: { fontSize: 13, color: c.muted, marginTop: 2 },
   note: { fontSize: 12, color: c.muted, lineHeight: 18, marginTop: 8 },
+
+  card: {
+    backgroundColor: c.surfaceSecondary,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: c.divider,
+    padding: 16,
+    gap: 14,
+  },
+  segment: {
+    flexDirection: "row",
+    backgroundColor: c.surfaceTertiary,
+    borderRadius: 12,
+    padding: 4,
+    gap: 4,
+  },
+  segmentItem: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  segmentItemActive: { backgroundColor: c.brandPrimary },
+  segmentText: { fontSize: 14, fontWeight: "600", color: c.onSurface },
+  segmentTextActive: { color: c.onBrandPrimary },
+
+  sliderRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  sliderValue: {
+    width: 48,
+    textAlign: "right",
+    fontSize: 15,
+    fontWeight: "700",
+    color: c.onSurface,
+    fontVariant: ["tabular-nums"],
+  },
+
+  // Live preview of the floating panel.
+  previewWrap: {
+    borderRadius: 16,
+    overflow: "hidden",
+    padding: 14,
+    backgroundColor: c.surfaceTertiary,
+  },
+  previewGrid: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    opacity: 0.35,
+  },
+  previewTile: { width: "25%", height: 24 },
+  previewPanel: {
+    borderRadius: 14,
+    padding: 10,
+    gap: 6,
+    borderWidth: 1,
+  },
+  previewPanelTitle: { fontSize: 11, fontWeight: "600" },
+  previewBlock: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 5 },
 }));
+
+// Mirrors the Kotlin overlay palette (must be identical in both themes).
+const PANEL_RGB = "20,20,20";
+const BLOCK_RGB = "40,66,40";
+const PANEL_STROKE = "rgba(180,220,180,0.47)";
+const PANEL_TEXT = "#FFFFFF";
+const PANEL_MUTED = "rgba(200,200,200,0.8)";
 
 export default function SettingsScreen() {
   const styles = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const [cadence, setCadence] = useState<Cadence>("5s");
+  const [overlay, setOverlay] = useState<OverlayPrefs>(DEFAULT_OVERLAY);
 
   useEffect(() => {
     loadCadence().then(setCadence);
+    loadOverlayPrefs().then(setOverlay);
   }, []);
 
-  const pick = async (c: Cadence) => {
+  const pickCadence = async (c: Cadence) => {
     Haptics.selectionAsync().catch(() => {});
     setCadence(c);
     await saveCadence(c);
   };
+
+  const pickTextSize = async (t: TextSize) => {
+    Haptics.selectionAsync().catch(() => {});
+    const next = { ...overlay, textSize: t };
+    setOverlay(next);
+    await saveOverlayPrefs(next);
+  };
+
+  const commitOpacity = async (v: number) => {
+    Haptics.selectionAsync().catch(() => {});
+    const next = { ...overlay, opacity: Math.round(v * 100) / 100 };
+    setOverlay(next);
+    await saveOverlayPrefs(next);
+  };
+
+  const pct = Math.round(overlay.opacity * 100);
+  const fontSize = textSizeSp(overlay.textSize);
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -90,7 +194,100 @@ export default function SettingsScreen() {
         <Text style={styles.title}>Settings</Text>
       </View>
 
-      <View style={styles.body}>
+      <ScrollView
+        contentContainerStyle={[styles.body, { paddingBottom: insets.bottom + 32 }]}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* ---- Overlay appearance ---- */}
+        <Text style={styles.sectionLabel}>FLOATING PANEL</Text>
+        <View style={styles.card}>
+          {/* Live preview */}
+          <View style={styles.previewWrap} testID="overlay-preview">
+            <View style={styles.previewGrid} pointerEvents="none">
+              {Array.from({ length: 16 }).map((_, i) => (
+                <View
+                  key={i}
+                  style={[
+                    styles.previewTile,
+                    { backgroundColor: i % 2 === 0 ? colors.brandSecondary : colors.surfaceSecondary },
+                  ]}
+                />
+              ))}
+            </View>
+            <View
+              style={[
+                styles.previewPanel,
+                {
+                  backgroundColor: `rgba(${PANEL_RGB},${overlay.opacity})`,
+                  borderColor: PANEL_STROKE,
+                },
+              ]}
+            >
+              <Text style={[styles.previewPanelTitle, { color: PANEL_MUTED }]}>
+                LensTranslate • Japanese
+              </Text>
+              <View
+                style={[
+                  styles.previewBlock,
+                  { backgroundColor: `rgba(${BLOCK_RGB},${Math.min(1, overlay.opacity * 0.94)})` },
+                ]}
+              >
+                <Text style={{ color: PANEL_TEXT, fontSize, lineHeight: fontSize * 1.35 }}>
+                  Press START to begin the quest
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Text size */}
+          <View>
+            <Text style={styles.optionDesc}>Text size</Text>
+            <View style={[styles.segment, { marginTop: 8 }]} testID="text-size-segment">
+              {TEXT_SIZE_OPTIONS.map((o) => {
+                const active = o.key === overlay.textSize;
+                return (
+                  <Pressable
+                    key={o.key}
+                    testID={`text-size-${o.key}`}
+                    onPress={() => pickTextSize(o.key)}
+                    style={[styles.segmentItem, active && styles.segmentItemActive]}
+                  >
+                    <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
+                      {o.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+
+          {/* Opacity */}
+          <View>
+            <Text style={styles.optionDesc}>Panel opacity</Text>
+            <View style={styles.sliderRow}>
+              <Icon name="circle-outline" size={18} color={colors.muted} />
+              <Slider
+                testID="opacity-slider"
+                style={{ flex: 1, height: 44 }}
+                minimumValue={MIN_OPACITY}
+                maximumValue={1}
+                step={0.05}
+                value={overlay.opacity}
+                onValueChange={(v) => setOverlay((p) => ({ ...p, opacity: v }))}
+                onSlidingComplete={commitOpacity}
+                minimumTrackTintColor={colors.brandPrimary}
+                maximumTrackTintColor={colors.borderStrong}
+                thumbTintColor={colors.brandPrimary}
+              />
+              <Icon name="circle" size={18} color={colors.muted} />
+              <Text style={styles.sliderValue} testID="opacity-value">
+                {pct}%
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        {/* ---- Cadence ---- */}
         <Text style={styles.sectionLabel}>CAPTURE CADENCE</Text>
         {CADENCE_OPTIONS.map((o) => {
           const selected = o.key === cadence;
@@ -98,7 +295,7 @@ export default function SettingsScreen() {
             <Pressable
               key={o.key}
               testID={`cadence-option-${o.key}`}
-              onPress={() => pick(o.key)}
+              onPress={() => pickCadence(o.key)}
               style={[styles.option, selected && styles.optionSelected]}
             >
               <View style={styles.optionIcon}>
@@ -123,7 +320,7 @@ export default function SettingsScreen() {
         <Text style={styles.note}>
           Changes apply the next time you start screen translation.
         </Text>
-      </View>
+      </ScrollView>
     </View>
   );
 }

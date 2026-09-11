@@ -45,6 +45,8 @@ class ScreenCaptureService : Service() {
     private var busy = false
     private var intervalMs = 5000L
     private var manual = false
+    /** Set when the user swaps language while a translation is in flight. */
+    @Volatile private var retranslateQueued = false
     /** Last frame we managed to grab; reused for manual refresh when the screen hasn't changed. */
     private var lastFrameB64: String? = null
     private var width = 720
@@ -90,9 +92,16 @@ class ScreenCaptureService : Service() {
             applicationContext,
             manual = manual,
             onRefresh = { if (running && !busy) captureFrame(force = true) },
+            onLangSelected = { lang ->
+                ScreenTranslatorHolder.pendingLang = lang.code
+                ScreenTranslatorHolder.pendingLangName = lang.name
+                // Re-translate the current screen right away in the new language.
+                if (running && !busy) captureFrame(force = true) else retranslateQueued = true
+            },
             onClose = { stopSelf() },
         )
         running = true
+        ScreenTranslatorHolder.isRunning = true
         handler.postDelayed(captureLoop, 800)
         return START_STICKY
     }
@@ -211,6 +220,10 @@ class ScreenCaptureService : Service() {
             handler.post { FloatingOverlayManager.setStatus(applicationContext, "") }
         } finally {
             busy = false
+            if (retranslateQueued) {
+                retranslateQueued = false
+                handler.post { if (running) captureFrame(force = true) }
+            }
         }
     }
 
@@ -245,6 +258,7 @@ class ScreenCaptureService : Service() {
 
     override fun onDestroy() {
         running = false
+        ScreenTranslatorHolder.isRunning = false
         handler.removeCallbacksAndMessages(null)
         try { virtualDisplay?.release() } catch (_: Throwable) {}
         try { imageReader?.close() } catch (_: Throwable) {}

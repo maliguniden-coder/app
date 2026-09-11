@@ -51,3 +51,46 @@ export async function toggleFavorite(code: string): Promise<string[]> {
   await AsyncStorage.setItem(FAV_KEY, JSON.stringify(next));
   return next;
 }
+
+// ---- Overlay appearance ----
+
+export type TextSize = "small" | "medium" | "large";
+
+export const TEXT_SIZE_OPTIONS: { key: TextSize; label: string; sp: number }[] = [
+  { key: "small", label: "Small", sp: 12 },
+  { key: "medium", label: "Medium", sp: 14 },
+  { key: "large", label: "Large", sp: 17 },
+];
+
+export type OverlayPrefs = { textSize: TextSize; opacity: number };
+
+const OVERLAY_KEY = "overlay-prefs";
+export const DEFAULT_OVERLAY: OverlayPrefs = { textSize: "medium", opacity: 0.92 };
+export const MIN_OPACITY = 0.4;
+
+export async function loadOverlayPrefs(): Promise<OverlayPrefs> {
+  try {
+    const raw = await AsyncStorage.getItem(OVERLAY_KEY);
+    if (raw) {
+      const p = JSON.parse(raw) as Partial<OverlayPrefs>;
+      return {
+        textSize: TEXT_SIZE_OPTIONS.some((o) => o.key === p.textSize)
+          ? (p.textSize as TextSize)
+          : DEFAULT_OVERLAY.textSize,
+        opacity:
+          typeof p.opacity === "number"
+            ? Math.min(1, Math.max(MIN_OPACITY, p.opacity))
+            : DEFAULT_OVERLAY.opacity,
+      };
+    }
+  } catch {}
+  return DEFAULT_OVERLAY;
+}
+
+export async function saveOverlayPrefs(p: OverlayPrefs) {
+  await AsyncStorage.setItem(OVERLAY_KEY, JSON.stringify(p));
+}
+
+export function textSizeSp(t: TextSize): number {
+  return TEXT_SIZE_OPTIONS.find((o) => o.key === t)?.sp ?? 14;
+}

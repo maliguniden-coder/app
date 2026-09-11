@@ -15,6 +15,14 @@ Android app that translates text in *any* other app / game running on the phone.
 - **Capture cadence** — Settings sheet: Every 2s / Every 5s / Manual (AsyncStorage `capture-cadence`). Manual adds a ↻ button on the floating panel; last frame is reused if the screen hasn't changed
 - **Pin overlay** — lock icon on the floating panel header disables dragging (Kotlin, `FloatingOverlayManager`)
 - **Copy from history** — tap any history card to copy the translation (expo-clipboard) with toast + haptic
+- **Overlay text size** — Small / Medium / Large (12/14/17 sp) in Settings with live preview; persisted in `overlay-prefs`
+- **Overlay opacity** — 40–100% slider in Settings (`@react-native-community/slider`); panel + block background alpha scale with it
+- **Quick language swap** — favorites appear as chips on the floating panel; tapping re-translates immediately; Home mirrors the active target via `getActiveTarget()`
+- **History search** — client-side filter over original + translated text, match highlighting, result count, no-results state
+
+## Native bridge
+- `startCapture(options: CaptureOptions)` — `{ targetLang, targetLangName, backendUrl, intervalMs, textSizeSp, opacity, favorites[] }`
+- `getActiveTarget()` — `{code,name} | null` while the service is running
 
 ## Non-goals
 - iOS live screen translation (Apple blocks reading other apps)

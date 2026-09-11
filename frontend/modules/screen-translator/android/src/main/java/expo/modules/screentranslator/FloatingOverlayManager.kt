@@ -12,6 +12,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -37,12 +38,17 @@ object FloatingOverlayManager {
     private var titleView: TextView? = null
     private var lockView: ImageView? = null
     private var handleView: View? = null
+    private var chipsRow: LinearLayout? = null
     private var params: WindowManager.LayoutParams? = null
     private var wm: WindowManager? = null
 
     private var pinned = false
     private var detectedLang = ""
     private var status = ""
+    private var textSizeSp = 14f
+    private var opacity = 0.92f
+    private var chipLangs: List<ScreenTranslatorHolder.Lang> = emptyList()
+    private var chipSelect: ((ScreenTranslatorHolder.Lang) -> Unit)? = null
 
     private val ACCENT = Color.rgb(124, 224, 130)
 
@@ -50,6 +56,7 @@ object FloatingOverlayManager {
         ctx: Context,
         manual: Boolean,
         onRefresh: () -> Unit,
+        onLangSelected: (ScreenTranslatorHolder.Lang) -> Unit,
         onClose: () -> Unit,
     ) {
         if (container != null) return
@@ -58,6 +65,8 @@ object FloatingOverlayManager {
         pinned = false
         detectedLang = ""
         status = ""
+        textSizeSp = ScreenTranslatorHolder.textSizeSp
+        opacity = ScreenTranslatorHolder.opacity
 
         val dm = DisplayMetrics()
         @Suppress("DEPRECATION")
@@ -66,7 +75,7 @@ object FloatingOverlayManager {
         val panel = FrameLayout(ctx)
         val bg = GradientDrawable().apply {
             cornerRadius = dp(ctx, 20f)
-            setColor(Color.argb(235, 20, 20, 20))
+            setColor(Color.argb((255 * opacity).toInt(), 20, 20, 20))
             setStroke(dp(ctx, 1f).toInt(), Color.argb(120, 180, 220, 180))
         }
         panel.background = bg
@@ -133,6 +142,31 @@ object FloatingOverlayManager {
         header.addView(close)
 
         col.addView(header)
+
+        // Quick language swap chips (favorites + current target).
+        val chips = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        val scroller = HorizontalScrollView(ctx).apply {
+            isHorizontalScrollBarEnabled = false
+            addView(chips)
+        }
+        chipsRow = chips
+        chipLangs = buildChipLangs()
+        chipSelect = { lang ->
+            onLangSelected(lang)
+            setStatus(ctx, "Translating…")
+        }
+        if (chipLangs.size > 1) {
+            val scrollLp = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+            scrollLp.topMargin = dp(ctx, 8f).toInt()
+            col.addView(scroller, scrollLp)
+            renderChips(ctx)
+        }
 
         val body = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
@@ -212,10 +246,10 @@ object FloatingOverlayManager {
             val tv = TextView(ctx).apply {
                 text = b.translated
                 setTextColor(Color.WHITE)
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, textSizeSp)
                 val bg = GradientDrawable().apply {
                     cornerRadius = dp(ctx, 10f)
-                    setColor(Color.argb(220, 40, 66, 40))
+                    setColor(Color.argb((240 * opacity).toInt(), 40, 66, 40))
                 }
                 background = bg
                 setPadding(dp(ctx, 10f).toInt(), dp(ctx, 6f).toInt(), dp(ctx, 10f).toInt(), dp(ctx, 6f).toInt())
@@ -226,6 +260,53 @@ object FloatingOverlayManager {
             )
             lp.topMargin = dp(ctx, 6f).toInt()
             body.addView(tv, lp)
+        }
+    }
+
+    /** Current target first, then favorites (deduped). */
+    private fun buildChipLangs(): List<ScreenTranslatorHolder.Lang> {
+        val current = ScreenTranslatorHolder.Lang(
+            ScreenTranslatorHolder.pendingLang,
+            ScreenTranslatorHolder.pendingLangName,
+        )
+        val out = mutableListOf(current)
+        for (f in ScreenTranslatorHolder.favorites) {
+            if (out.none { it.code == f.code }) out.add(f)
+        }
+        return out
+    }
+
+    private fun renderChips(ctx: Context) {
+        val row = chipsRow ?: return
+        row.removeAllViews()
+        val current = ScreenTranslatorHolder.pendingLang
+        for (lang in chipLangs) {
+            val selected = lang.code == current
+            val chip = TextView(ctx).apply {
+                text = lang.name
+                maxLines = 1
+                gravity = Gravity.CENTER
+                setTextColor(if (selected) Color.BLACK else Color.WHITE)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                minHeight = dp(ctx, 32f).toInt()
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(ctx, 999f)
+                    setColor(if (selected) ACCENT else Color.argb(70, 255, 255, 255))
+                }
+                setPadding(dp(ctx, 12f).toInt(), dp(ctx, 4f).toInt(), dp(ctx, 12f).toInt(), dp(ctx, 4f).toInt())
+                contentDescription = "Translate to ${lang.name}"
+                setOnClickListener {
+                    if (selected) return@setOnClickListener
+                    chipSelect?.invoke(lang)
+                    renderChips(ctx)
+                }
+            }
+            val lp = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+            lp.marginEnd = dp(ctx, 6f).toInt()
+            row.addView(chip, lp)
         }
     }
 
@@ -274,6 +355,9 @@ object FloatingOverlayManager {
         titleView = null
         lockView = null
         handleView = null
+        chipsRow = null
+        chipSelect = null
+        chipLangs = emptyList()
         params = null
         pinned = false
     }

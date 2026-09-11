@@ -15,8 +15,18 @@ import Icon from "@react-native-vector-icons/material-design-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { makeStyles, toggleColorScheme, useTheme } from "@/src/theme";
-import { Cadence, cadenceLabel, cadenceMs, loadCadence } from "@/src/prefs";
 import {
+  Cadence,
+  cadenceLabel,
+  cadenceMs,
+  loadCadence,
+  loadFavorites,
+  loadOverlayPrefs,
+  textSizeSp,
+} from "@/src/prefs";
+import { queryClient } from "@/src/query-client";
+import {
+  getActiveTarget,
   hasOverlayPermission,
   isScreenTranslatorAvailable,
   requestOverlayPermission,
@@ -150,6 +160,27 @@ async function loadTarget(): Promise<Lang> {
   return DEFAULT_TARGET;
 }
 
+/** Favorite languages resolved to {code,name} for the overlay's quick-swap chips. */
+async function loadFavoriteLangs(): Promise<Lang[]> {
+  const codes = await loadFavorites();
+  if (codes.length === 0) return [];
+  try {
+    const all = await queryClient.fetchQuery<Lang[]>({
+      queryKey: ["languages"],
+      queryFn: async () => {
+        const r = await fetch(`${BACKEND}/api/languages`);
+        if (!r.ok) throw new Error("Failed to load languages");
+        return r.json();
+      },
+      staleTime: 60 * 60 * 1000,
+    });
+    const byCode = new Map(all.map((l) => [l.code, l]));
+    return codes.map((c) => byCode.get(c)).filter((l): l is Lang => !!l);
+  } catch {
+    return [];
+  }
+}
+
 export default function Home() {
   const styles = useStyles();
   const { colors, scheme } = useTheme();
@@ -170,6 +201,14 @@ export default function Home() {
       loadCadence().then(setCadence);
       if (nativeReady) {
         hasOverlayPermission().then(setOverlayOK);
+        // If the overlay is running, mirror its current language (user may have
+        // swapped it from the floating panel chips).
+        getActiveTarget().then((active) => {
+          if (!active) return;
+          setRunning(true);
+          setTarget(active);
+          AsyncStorage.setItem("target-lang", JSON.stringify(active)).catch(() => {});
+        });
       }
     }, [nativeReady]),
   );
@@ -200,7 +239,16 @@ export default function Home() {
     setBusy(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
     try {
-      const ok = await startCapture(target.code, target.name, BACKEND, cadenceMs(cadence));
+      const [overlay, favorites] = await Promise.all([loadOverlayPrefs(), loadFavoriteLangs()]);
+      const ok = await startCapture({
+        targetLang: target.code,
+        targetLangName: target.name,
+        backendUrl: BACKEND,
+        intervalMs: cadenceMs(cadence),
+        textSizeSp: textSizeSp(overlay.textSize),
+        opacity: overlay.opacity,
+        favorites,
+      });
       setRunning(ok);
       if (!ok) setError("Screen capture was cancelled.");
     } catch (e: any) {
@@ -400,8 +448,8 @@ export default function Home() {
           <View style={styles.bullet}>
             <View style={styles.bulletDot} />
             <Text style={styles.bulletText}>
-              A floating panel appears with the translated text. Drag it anywhere, or
-              tap the lock icon to pin it in place while you play.
+              A floating panel appears with the translated text. Drag it anywhere, pin it
+              with the lock icon, or tap a favorite-language chip to swap targets instantly.
             </Text>
           </View>
           <View style={styles.bullet}>

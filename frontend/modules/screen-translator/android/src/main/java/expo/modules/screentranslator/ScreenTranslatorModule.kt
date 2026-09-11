@@ -39,7 +39,7 @@ class ScreenTranslatorModule : Module() {
             promise.resolve(false)
         }
 
-        AsyncFunction("startCapture") { targetLang: String, targetLangName: String, backendUrl: String, intervalMs: Int, promise: Promise ->
+        AsyncFunction("startCapture") { options: Map<String, Any?>, promise: Promise ->
             val ctx = appContext.reactContext
             val activity: Activity? = appContext.activityProvider?.currentActivity
             if (ctx == null || activity == null) {
@@ -48,10 +48,19 @@ class ScreenTranslatorModule : Module() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(ctx)) {
                 promise.reject("NO_OVERLAY", "Overlay permission not granted", null); return@AsyncFunction
             }
-            ScreenTranslatorHolder.pendingLang = targetLang
-            ScreenTranslatorHolder.pendingLangName = targetLangName
-            ScreenTranslatorHolder.pendingBackend = backendUrl
-            ScreenTranslatorHolder.pendingIntervalMs = intervalMs.toLong()
+            ScreenTranslatorHolder.pendingLang = options["targetLang"] as? String ?: "en"
+            ScreenTranslatorHolder.pendingLangName = options["targetLangName"] as? String ?: "English"
+            ScreenTranslatorHolder.pendingBackend = options["backendUrl"] as? String ?: ""
+            ScreenTranslatorHolder.pendingIntervalMs = (options["intervalMs"] as? Number)?.toLong() ?: 5000L
+            ScreenTranslatorHolder.textSizeSp = (options["textSizeSp"] as? Number)?.toFloat() ?: 14f
+            ScreenTranslatorHolder.opacity = ((options["opacity"] as? Number)?.toFloat() ?: 0.92f).coerceIn(0.4f, 1f)
+            @Suppress("UNCHECKED_CAST")
+            val favs = options["favorites"] as? List<Map<String, Any?>> ?: emptyList()
+            ScreenTranslatorHolder.favorites = favs.mapNotNull { f ->
+                val code = f["code"] as? String ?: return@mapNotNull null
+                val name = f["name"] as? String ?: return@mapNotNull null
+                ScreenTranslatorHolder.Lang(code, name)
+            }
             startPromise = promise
 
             val mpm = ctx.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
@@ -64,6 +73,14 @@ class ScreenTranslatorModule : Module() {
             ctx.stopService(intent)
             FloatingOverlayManager.dismiss(ctx)
             true
+        }
+
+        AsyncFunction("getActiveTarget") {
+            if (!ScreenTranslatorHolder.isRunning) return@AsyncFunction null
+            mapOf(
+                "code" to ScreenTranslatorHolder.pendingLang,
+                "name" to ScreenTranslatorHolder.pendingLangName,
+            )
         }
 
         OnActivityResult { _, payload ->

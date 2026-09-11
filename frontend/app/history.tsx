@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
   FlatList,
   Pressable,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { useFocusEffect, router } from "expo-router";
@@ -67,6 +68,34 @@ const useStyles = makeStyles((c) => ({
     backgroundColor: c.surfaceTertiary,
   },
   clearText: { fontSize: 14, fontWeight: "600", color: c.error },
+  searchWrap: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: c.surfaceSecondary,
+    borderBottomWidth: 1,
+    borderBottomColor: c.divider,
+  },
+  searchInput: { flex: 1, fontSize: 16, color: c.onSurface, padding: 0 },
+  searchClear: {
+    width: 32,
+    height: 32,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: c.surfaceTertiary,
+  },
+  resultCount: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    fontSize: 12,
+    fontWeight: "600",
+    color: c.muted,
+    letterSpacing: 0.4,
+  },
+  highlight: { backgroundColor: c.brandSecondary, color: c.onBrandSecondary, borderRadius: 3 },
   card: {
     marginHorizontal: 16,
     marginTop: 12,
@@ -150,6 +179,55 @@ function formatDate(iso: string) {
   }
 }
 
+/** Splits `text` so the matching parts of `query` can be highlighted. */
+function highlightParts(text: string, query: string): { str: string; hit: boolean }[] {
+  if (!query) return [{ str: text, hit: false }];
+  const lower = text.toLowerCase();
+  const q = query.toLowerCase();
+  const out: { str: string; hit: boolean }[] = [];
+  let i = 0;
+  while (i < text.length) {
+    const idx = lower.indexOf(q, i);
+    if (idx === -1) {
+      out.push({ str: text.slice(i), hit: false });
+      break;
+    }
+    if (idx > i) out.push({ str: text.slice(i, idx), hit: false });
+    out.push({ str: text.slice(idx, idx + q.length), hit: true });
+    i = idx + q.length;
+  }
+  return out;
+}
+
+function Highlighted({
+  text,
+  query,
+  style,
+  hitStyle,
+  numberOfLines,
+}: {
+  text: string;
+  query: string;
+  style: any;
+  hitStyle: any;
+  numberOfLines?: number;
+}) {
+  const parts = useMemo(() => highlightParts(text, query), [text, query]);
+  return (
+    <Text style={style} numberOfLines={numberOfLines}>
+      {parts.map((p, i) =>
+        p.hit ? (
+          <Text key={i} style={hitStyle}>
+            {p.str}
+          </Text>
+        ) : (
+          p.str
+        ),
+      )}
+    </Text>
+  );
+}
+
 export default function HistoryScreen() {
   const styles = useStyles();
   const { colors } = useTheme();
@@ -197,6 +275,19 @@ export default function HistoryScreen() {
 
   const empty = !isLoading && (!data || data.length === 0);
 
+  const [query, setQuery] = useState("");
+  const q = query.trim();
+  const filtered = useMemo(() => {
+    if (!data) return [];
+    if (!q) return data;
+    const needle = q.toLowerCase();
+    return data.filter(
+      (i) =>
+        i.translated_text.toLowerCase().includes(needle) ||
+        i.original_text.toLowerCase().includes(needle),
+    );
+  }, [data, q]);
+
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
       <View style={styles.header}>
@@ -219,6 +310,33 @@ export default function HistoryScreen() {
         )}
       </View>
 
+      {!empty && (
+        <View style={styles.searchWrap}>
+          <Icon name="magnify" size={20} color={colors.muted} />
+          <TextInput
+            testID="history-search-input"
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search translations"
+            placeholderTextColor={colors.muted}
+            style={styles.searchInput}
+            autoCorrect={false}
+            autoCapitalize="none"
+            returnKeyType="search"
+          />
+          {query.length > 0 && (
+            <Pressable
+              testID="history-search-clear"
+              onPress={() => setQuery("")}
+              style={styles.searchClear}
+              hitSlop={6}
+            >
+              <Icon name="close" size={16} color={colors.onSurface} />
+            </Pressable>
+          )}
+        </View>
+      )}
+
       {isLoading ? (
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
           <ActivityIndicator color={colors.brandPrimary} />
@@ -235,11 +353,28 @@ export default function HistoryScreen() {
             Start screen translation to see your recent translations here.
           </Text>
         </View>
+      ) : filtered.length === 0 ? (
+        <View style={styles.emptyWrap} testID="history-no-results">
+          <Icon name="text-search" size={48} color={colors.muted} />
+          <Text style={styles.emptyTitle}>No matches</Text>
+          <Text style={styles.emptySub}>
+            Nothing in your history contains “{q}”.
+          </Text>
+        </View>
       ) : (
         <FlatList
-          data={data}
+          data={filtered}
           keyExtractor={(i) => i.id}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           contentContainerStyle={{ paddingBottom: insets.bottom + 24, paddingTop: 4 }}
+          ListHeaderComponent={
+            q ? (
+              <Text style={styles.resultCount} testID="history-result-count">
+                {filtered.length} {filtered.length === 1 ? "RESULT" : "RESULTS"}
+              </Text>
+            ) : null
+          }
           renderItem={({ item }) => (
             <Pressable
               style={styles.card}
@@ -254,13 +389,21 @@ export default function HistoryScreen() {
                 </View>
                 <Text style={styles.dateText}>{formatDate(item.created_at)}</Text>
               </View>
-              <Text style={styles.original} numberOfLines={4}>
-                {item.original_text}
-              </Text>
+              <Highlighted
+                text={item.original_text}
+                query={q}
+                style={styles.original}
+                hitStyle={styles.highlight}
+                numberOfLines={4}
+              />
               <View style={styles.divider} />
-              <Text style={styles.translated} numberOfLines={6}>
-                {item.translated_text}
-              </Text>
+              <Highlighted
+                text={item.translated_text}
+                query={q}
+                style={styles.translated}
+                hitStyle={styles.highlight}
+                numberOfLines={6}
+              />
               <View style={styles.copyHint}>
                 <Icon name="content-copy" size={13} color={colors.muted} />
                 <Text style={styles.copyHintText}>Tap to copy</Text>
