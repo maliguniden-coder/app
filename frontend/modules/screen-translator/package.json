@@ -1,0 +1,7 @@
+{
+  "name": "screen-translator",
+  "version": "1.0.0",
+  "description": "Android screen-capture + floating overlay translation module",
+  "main": "index.ts",
+  "types": "index.ts"
+}

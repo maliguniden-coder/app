@@ -1,0 +1,176 @@
+{
+  "app_name": "LensTranslate",
+  "personality": "1 iOS-Native Clean",
+  "personality_one_liner": "A highly readable, camera-first utility framing the real world with minimal chrome and clear typography.",
+  "color": {
+    "light": {
+      "surface": "#F9F9F8",
+      "onSurface": "#1C1C1E",
+      "surfaceSecondary": "#FFFFFF",
+      "onSurfaceSecondary": "#1C1C1E",
+      "surfaceTertiary": "#F0F0EE",
+      "onSurfaceTertiary": "#3A3A3C",
+      "surfaceInverse": "#1C1C1E",
+      "onSurfaceInverse": "#FFFFFF",
+      "brand": "#749B74",
+      "brandPrimary": "#628B62",
+      "onBrandPrimary": "#FFFFFF",
+      "brandSecondary": "#E2EBE2",
+      "onBrandSecondary": "#2D422D",
+      "brandTertiary": "#F0F5F0",
+      "onBrandTertiary": "#456345",
+      "success": "#34C759",
+      "onSuccess": "#FFFFFF",
+      "warning": "#FF9F0A",
+      "onWarning": "#FFFFFF",
+      "error": "#FF453A",
+      "onError": "#FFFFFF",
+      "info": "#2D422D",
+      "onInfo": "#FFFFFF",
+      "border": "#E5E5EA",
+      "borderStrong": "#C7C7CC",
+      "divider": "#E5E5EA",
+      "muted": "#8E8E93"
+    },
+    "dark": {
+      "surface": "#121212",
+      "onSurface": "#F2F2F7",
+      "surfaceSecondary": "#1C1C1E",
+      "onSurfaceSecondary": "#E5E5EA",
+      "surfaceTertiary": "#2C2C2E",
+      "onSurfaceTertiary": "#D1D1D6",
+      "surfaceInverse": "#F9F9F8",
+      "onSurfaceInverse": "#1C1C1E",
+      "brand": "#749B74",
+      "brandPrimary": "#7CA57C",
+      "onBrandPrimary": "#000000",
+      "brandSecondary": "#2D422D",
+      "onBrandSecondary": "#E2EBE2",
+      "brandTertiary": "#1F2E1F",
+      "onBrandTertiary": "#C3D9C3",
+      "success": "#30D158",
+      "onSuccess": "#FFFFFF",
+      "warning": "#FF9F0A",
+      "onWarning": "#FFFFFF",
+      "error": "#FF453A",
+      "onError": "#FFFFFF",
+      "info": "#E2EBE2",
+      "onInfo": "#121212",
+      "border": "#38383A",
+      "borderStrong": "#48484A",
+      "divider": "#38383A",
+      "muted": "#8E8E93"
+    }
+  },
+  "typography": {
+    "displayFontFamily": "Plus Jakarta Sans",
+    "textFontFamily": "Plus Jakarta Sans",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Generous padding around content, distinct visual separation between camera view and floating HUD controls.",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 6,
+    "md": 12,
+    "lg": 20,
+    "pill": 999
+  },
+  "shadow_tier": "1",
+  "navigation": "stack_only",
+  "icon_set": "Phosphor",
+  "glassmorphism": {
+    "enabled": "true",
+    "do's": [
+      "Use heavily tinted glass for top language selectors floating over the camera.",
+      "Use frosted glass on the bottom control bar to maintain camera context."
+    ],
+    "dont's": [
+      "Don't use blur on translated text bounding boxes; those need solid backgrounds for readability."
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-glass-effect",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "haptics": {
+    "events": {
+      "capture_press": "heavy",
+      "language_swap": "light",
+      "theme_toggle": "medium",
+      "bounding_box_drag_end": "light"
+    }
+  },
+  "screens": [
+    {
+      "name": "Live Camera (Home)",
+      "purpose": "Primary AR translation surface combining real-time camera feed with translated text overlays.",
+      "states": {
+        "loading": "Camera initializing with a subtle pulse animation.",
+        "empty": "No text detected - clear camera view with a persistent 'Scanning for text...' floating badge.",
+        "error": "Camera permission denied or network error - frosted overlay with readable error message and primary retry button."
+      },
+      "layout": "Camera feed covers `flex: 1` as absolute background. Top Safe Area contains a frosted glass pill-shaped language selector (Source Auto-Detect -> Target Pick) anchored to the top. A draggable bounding box viewport floats in the center using PanGestureHandler. At the bottom, a floating frosted glass sheet contains the History button, Settings toggle (Light/Dark), and Capture/Translate action. Detected text bounding boxes are rendered absolutely over the camera with a solid `surfaceSecondary` background and `onSurface` text, exactly matching the scale/position of the source text."
+    },
+    {
+      "name": "Language Picker (Modal)",
+      "purpose": "Full-screen or large bottom sheet for selecting the target translation language from a list of 100+.",
+      "states": {
+        "loading": "List rendering.",
+        "empty": "No search results found.",
+        "error": "Failed to load language list."
+      },
+      "layout": "Vertical list view with a sticky search bar at the top. List items are a minimum 56pt tall. Current selected language has a checkbox or strong highlight on the right. Avoid flags for languages (often politically complex); stick to localized text names."
+    },
+    {
+      "name": "Translation History",
+      "purpose": "Archive of past translations for user reference.",
+      "states": {
+        "loading": "Skeleton loader for list rows.",
+        "empty": "Empty state illustration of an open notebook with 'No translations yet' text.",
+        "error": "Failed to load history - Retry button."
+      },
+      "layout": "Standard scrolling vertical list. Each row displays the original text and translated text with a subtle date stamp. 'Clear All' button placed at the top right of the navigation header."
+    }
+  ],
+  "images": {
+    "history_empty_state": {
+      "url": "https://images.unsplash.com/photo-1531346878377-a5be20888e57?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NzV8MHwxfHNlYXJjaHwxfHxvcGVuJTIwbm90ZWJvb2slMjBtaW5pbWFsfGVufDB8fHx8MTc4MjE2NDQxMXww&ixlib=rb-4.1.0&q=85",
+      "alt": "Minimalistic open notebook empty state"
+    },
+    "onboarding_hero": {
+      "url": "https://images.pexels.com/photos/7827838/pexels-photo-7827838.jpeg",
+      "alt": "Abstract geometric shapes Minimalistic background"
+    }
+  },
+  "instructions_to_main_agent": [
+    "This is an AR-style Utility application. The layout should prioritize the camera viewfinder. Use `expo-camera` or equivalent.",
+    "Implement light and dark mode toggling directly in the Settings or Bottom HUD, dynamically switching the theme.",
+    "Bounding boxes rendered over the camera feed MUST use a solid background (not blurred) so the translated text is highly readable against random real-world backgrounds.",
+    "Use Phosphor icons. Ensure the top language selector is a prominent, pill-shaped frosted glass button that's easily reachable.",
+    "For the draggable camera viewport, use `react-native-reanimated` and `react-native-gesture-handler` for a buttery-smooth 60fps pan/drag interaction.",
+    "Display descriptive feedback loops (e.g., 'Detecting text...', 'Translating via Gemini...') rather than a generic spinner.",
+    "Use Sage Green (`brand` tokens) for accents. Blue is strictly banned per rules."
+  ]
+}

@@ -1,0 +1,89 @@
+package expo.modules.screentranslator
+
+import android.app.Activity
+import android.content.Context
+import android.content.Intent
+import android.media.projection.MediaProjectionManager
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
+import expo.modules.kotlin.Promise
+import expo.modules.kotlin.modules.Module
+import expo.modules.kotlin.modules.ModuleDefinition
+
+private const val REQ_CAPTURE = 34110
+
+class ScreenTranslatorModule : Module() {
+
+    private var startPromise: Promise? = null
+
+    override fun definition() = ModuleDefinition {
+        Name("ScreenTranslator")
+
+        Constants("isAndroid" to true)
+
+        AsyncFunction("hasOverlayPermission") {
+            val ctx = appContext.reactContext ?: return@AsyncFunction false
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) Settings.canDrawOverlays(ctx) else true
+        }
+
+        AsyncFunction("requestOverlayPermission") { promise: Promise ->
+            val ctx = appContext.reactContext
+            if (ctx == null) { promise.resolve(false); return@AsyncFunction }
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(ctx)) {
+                promise.resolve(true); return@AsyncFunction
+            }
+            val i = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${ctx.packageName}"))
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            ctx.startActivity(i)
+            promise.resolve(false)
+        }
+
+        AsyncFunction("startCapture") { targetLang: String, targetLangName: String, backendUrl: String, promise: Promise ->
+            val ctx = appContext.reactContext
+            val activity: Activity? = appContext.activityProvider?.currentActivity
+            if (ctx == null || activity == null) {
+                promise.reject("NO_ACTIVITY", "Activity unavailable", null); return@AsyncFunction
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(ctx)) {
+                promise.reject("NO_OVERLAY", "Overlay permission not granted", null); return@AsyncFunction
+            }
+            ScreenTranslatorHolder.pendingLang = targetLang
+            ScreenTranslatorHolder.pendingLangName = targetLangName
+            ScreenTranslatorHolder.pendingBackend = backendUrl
+            startPromise = promise
+
+            val mpm = ctx.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+            activity.startActivityForResult(mpm.createScreenCaptureIntent(), REQ_CAPTURE)
+        }
+
+        AsyncFunction("stopCapture") {
+            val ctx = appContext.reactContext ?: return@AsyncFunction false
+            val intent = Intent(ctx, ScreenCaptureService::class.java)
+            ctx.stopService(intent)
+            FloatingOverlayManager.dismiss(ctx)
+            true
+        }
+
+        OnActivityResult { _, payload ->
+            if (payload.requestCode != REQ_CAPTURE) return@OnActivityResult
+            val ctx = appContext.reactContext ?: return@OnActivityResult
+            val promise = startPromise
+            startPromise = null
+            if (payload.resultCode != Activity.RESULT_OK || payload.data == null) {
+                promise?.resolve(false)
+                return@OnActivityResult
+            }
+            val svc = Intent(ctx, ScreenCaptureService::class.java).apply {
+                putExtra(ScreenCaptureService.EXTRA_RESULT_CODE, payload.resultCode)
+                putExtra(ScreenCaptureService.EXTRA_RESULT_DATA, payload.data)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                ctx.startForegroundService(svc)
+            } else {
+                ctx.startService(svc)
+            }
+            promise?.resolve(true)
+        }
+    }
+}
