@@ -103,7 +103,29 @@ class ScreenCaptureService : Service() {
         running = true
         ScreenTranslatorHolder.isRunning = true
         handler.postDelayed(captureLoop, 800)
+        scheduleAutoStop(ScreenTranslatorHolder.autoStopMs)
         return START_STICKY
+    }
+
+    private var autoStopAt = 0L
+
+    private fun scheduleAutoStop(ms: Long) {
+        if (ms <= 0L) return
+        autoStopAt = System.currentTimeMillis() + ms
+        handler.postDelayed({ if (running) stopSelf() }, ms)
+        handler.post(countdownTick)
+    }
+
+    /** Updates the "Xm left" hint in the panel title once a minute. */
+    private val countdownTick = object : Runnable {
+        override fun run() {
+            if (!running || autoStopAt == 0L) return
+            val leftMs = autoStopAt - System.currentTimeMillis()
+            if (leftMs <= 0L) return
+            val mins = ((leftMs + 59_999L) / 60_000L).toInt()
+            FloatingOverlayManager.setAutoStopMinutes(mins)
+            handler.postDelayed(this, 60_000L)
+        }
     }
 
     private val captureLoop = object : Runnable {

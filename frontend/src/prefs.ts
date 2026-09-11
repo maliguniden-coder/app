@@ -37,6 +37,34 @@ export function cadenceLabel(c: Cadence): string {
   return CADENCE_OPTIONS.find((o) => o.key === c)?.label ?? "Every 5s";
 }
 
+// ---- Auto-stop timer ----
+
+export type AutoStop = 0 | 15 | 30 | 60;
+export const AUTO_STOP_OPTIONS: { minutes: AutoStop; label: string }[] = [
+  { minutes: 0, label: "Off" },
+  { minutes: 15, label: "15 min" },
+  { minutes: 30, label: "30 min" },
+  { minutes: 60, label: "60 min" },
+];
+const AUTO_STOP_KEY = "auto-stop-min";
+
+export async function loadAutoStop(): Promise<AutoStop> {
+  try {
+    const raw = await AsyncStorage.getItem(AUTO_STOP_KEY);
+    const n = Number(raw);
+    if (n === 15 || n === 30 || n === 60) return n;
+  } catch {}
+  return 0;
+}
+
+export async function saveAutoStop(m: AutoStop) {
+  await AsyncStorage.setItem(AUTO_STOP_KEY, String(m));
+}
+
+export function autoStopLabel(m: AutoStop): string {
+  return m === 0 ? "Off" : `After ${m} min`;
+}
+
 export async function loadFavorites(): Promise<string[]> {
   try {
     const raw = await AsyncStorage.getItem(FAV_KEY);

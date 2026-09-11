@@ -8,6 +8,8 @@ import Slider from "@react-native-community/slider";
 
 import { makeStyles, useTheme } from "@/src/theme";
 import {
+  AUTO_STOP_OPTIONS,
+  AutoStop,
   CADENCE_OPTIONS,
   Cadence,
   DEFAULT_OVERLAY,
@@ -15,8 +17,10 @@ import {
   OverlayPrefs,
   TEXT_SIZE_OPTIONS,
   TextSize,
+  loadAutoStop,
   loadCadence,
   loadOverlayPrefs,
+  saveAutoStop,
   saveCadence,
   saveOverlayPrefs,
   textSizeSp,
@@ -151,10 +155,12 @@ export default function SettingsScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const [cadence, setCadence] = useState<Cadence>("5s");
+  const [autoStop, setAutoStop] = useState<AutoStop>(0);
   const [overlay, setOverlay] = useState<OverlayPrefs>(DEFAULT_OVERLAY);
 
   useEffect(() => {
     loadCadence().then(setCadence);
+    loadAutoStop().then(setAutoStop);
     loadOverlayPrefs().then(setOverlay);
   }, []);
 
@@ -162,6 +168,12 @@ export default function SettingsScreen() {
     Haptics.selectionAsync().catch(() => {});
     setCadence(c);
     await saveCadence(c);
+  };
+
+  const pickAutoStop = async (m: AutoStop) => {
+    Haptics.selectionAsync().catch(() => {});
+    setAutoStop(m);
+    await saveAutoStop(m);
   };
 
   const pickTextSize = async (t: TextSize) => {
@@ -317,6 +329,34 @@ export default function SettingsScreen() {
             </Pressable>
           );
         })}
+
+        {/* ---- Auto-stop ---- */}
+        <Text style={styles.sectionLabel}>AUTO-STOP TIMER</Text>
+        <View style={styles.card}>
+          <View style={styles.segment} testID="auto-stop-segment">
+            {AUTO_STOP_OPTIONS.map((o) => {
+              const active = o.minutes === autoStop;
+              return (
+                <Pressable
+                  key={o.minutes}
+                  testID={`auto-stop-${o.minutes}`}
+                  onPress={() => pickAutoStop(o.minutes)}
+                  style={[styles.segmentItem, active && styles.segmentItemActive]}
+                >
+                  <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
+                    {o.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <Text style={styles.optionDesc} testID="auto-stop-desc">
+            {autoStop === 0
+              ? "The overlay keeps running until you stop it."
+              : `The overlay stops itself ${autoStop} minutes after you start it, saving battery if you forget.`}
+          </Text>
+        </View>
+
         <Text style={styles.note}>
           Changes apply the next time you start screen translation.
         </Text>

@@ -15,6 +15,8 @@ export type CaptureOptions = {
   opacity: number;
   /** Favorite languages shown as quick-swap chips on the panel. */
   favorites: OverlayLang[];
+  /** Stop the service automatically after this many ms; 0 = never. */
+  autoStopMs: number;
 };
 
 type Native = {

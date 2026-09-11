@@ -19,9 +19,11 @@ Android app that translates text in *any* other app / game running on the phone.
 - **Overlay opacity** — 40–100% slider in Settings (`@react-native-community/slider`); panel + block background alpha scale with it
 - **Quick language swap** — favorites appear as chips on the floating panel; tapping re-translates immediately; Home mirrors the active target via `getActiveTarget()`
 - **History search** — client-side filter over original + translated text, match highlighting, result count, no-results state
+- **Panel position memory** — last dragged x/y saved in SharedPreferences (`lens_translate_overlay`), restored & clamped to screen on next start
+- **Auto-stop timer** — Off / 15 / 30 / 60 min in Settings (`auto-stop-min`); service stops itself and panel title shows "Xm left"; Home re-syncs running state via `getActiveTarget()`
 
 ## Native bridge
-- `startCapture(options: CaptureOptions)` — `{ targetLang, targetLangName, backendUrl, intervalMs, textSizeSp, opacity, favorites[] }`
+- `startCapture(options: CaptureOptions)` — `{ targetLang, targetLangName, backendUrl, intervalMs, textSizeSp, opacity, favorites[], autoStopMs }`
 - `getActiveTarget()` — `{code,name} | null` while the service is running
 
 ## Non-goals

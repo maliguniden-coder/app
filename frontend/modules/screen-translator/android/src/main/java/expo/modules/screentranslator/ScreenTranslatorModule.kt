@@ -54,6 +54,7 @@ class ScreenTranslatorModule : Module() {
             ScreenTranslatorHolder.pendingIntervalMs = (options["intervalMs"] as? Number)?.toLong() ?: 5000L
             ScreenTranslatorHolder.textSizeSp = (options["textSizeSp"] as? Number)?.toFloat() ?: 14f
             ScreenTranslatorHolder.opacity = ((options["opacity"] as? Number)?.toFloat() ?: 0.92f).coerceIn(0.4f, 1f)
+            ScreenTranslatorHolder.autoStopMs = ((options["autoStopMs"] as? Number)?.toLong() ?: 0L).coerceAtLeast(0L)
             @Suppress("UNCHECKED_CAST")
             val favs = options["favorites"] as? List<Map<String, Any?>> ?: emptyList()
             ScreenTranslatorHolder.favorites = favs.mapNotNull { f ->

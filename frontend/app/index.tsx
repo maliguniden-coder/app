@@ -16,9 +16,12 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { makeStyles, toggleColorScheme, useTheme } from "@/src/theme";
 import {
+  AutoStop,
   Cadence,
+  autoStopLabel,
   cadenceLabel,
   cadenceMs,
+  loadAutoStop,
   loadCadence,
   loadFavorites,
   loadOverlayPrefs,
@@ -188,6 +191,7 @@ export default function Home() {
 
   const [target, setTarget] = useState<Lang>(DEFAULT_TARGET);
   const [cadence, setCadence] = useState<Cadence>("5s");
+  const [autoStop, setAutoStop] = useState<AutoStop>(0);
   const [running, setRunning] = useState(false);
   const [busy, setBusy] = useState(false);
   const [overlayOK, setOverlayOK] = useState(false);
@@ -199,12 +203,16 @@ export default function Home() {
     useCallback(() => {
       loadTarget().then(setTarget);
       loadCadence().then(setCadence);
+      loadAutoStop().then(setAutoStop);
       if (nativeReady) {
         hasOverlayPermission().then(setOverlayOK);
-        // If the overlay is running, mirror its current language (user may have
-        // swapped it from the floating panel chips).
+        // Mirror the service state: it may have auto-stopped, or the user may have
+        // swapped language from the floating panel chips.
         getActiveTarget().then((active) => {
-          if (!active) return;
+          if (!active) {
+            setRunning(false);
+            return;
+          }
           setRunning(true);
           setTarget(active);
           AsyncStorage.setItem("target-lang", JSON.stringify(active)).catch(() => {});
@@ -248,6 +256,7 @@ export default function Home() {
         textSizeSp: textSizeSp(overlay.textSize),
         opacity: overlay.opacity,
         favorites,
+        autoStopMs: autoStop * 60 * 1000,
       });
       setRunning(ok);
       if (!ok) setError("Screen capture was cancelled.");
@@ -411,6 +420,19 @@ export default function Home() {
               <Text style={styles.rowValue}>{cadenceLabel(cadence)}</Text>
             </View>
             <Icon name="tune-variant" size={20} color={colors.muted} />
+          </Pressable>
+          <Pressable
+            testID="auto-stop-row"
+            onPress={openSettings}
+            style={styles.row}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={styles.rowLabel}>AUTO-STOP</Text>
+              <Text style={autoStop === 0 ? styles.rowValueMuted : styles.rowValue}>
+                {autoStopLabel(autoStop)}
+              </Text>
+            </View>
+            <Icon name="timer-sand" size={20} color={colors.muted} />
           </Pressable>
         </View>
 

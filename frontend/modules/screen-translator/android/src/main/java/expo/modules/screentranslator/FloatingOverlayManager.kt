@@ -49,6 +49,11 @@ object FloatingOverlayManager {
     private var opacity = 0.92f
     private var chipLangs: List<ScreenTranslatorHolder.Lang> = emptyList()
     private var chipSelect: ((ScreenTranslatorHolder.Lang) -> Unit)? = null
+    private var autoStopMinutes = 0
+
+    private const val PREFS = "lens_translate_overlay"
+    private const val KEY_X = "panel_x"
+    private const val KEY_Y = "panel_y"
 
     private val ACCENT = Color.rgb(124, 224, 130)
 
@@ -193,8 +198,14 @@ object FloatingOverlayManager {
             PixelFormat.TRANSLUCENT
         )
         lp.gravity = Gravity.TOP or Gravity.START
-        lp.x = dp(ctx, 16f).toInt()
-        lp.y = dp(ctx, 80f).toInt()
+        // Restore where the user left the panel last session (clamped to the screen).
+        val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val defaultX = dp(ctx, 16f).toInt()
+        val defaultY = dp(ctx, 80f).toInt()
+        val savedX = prefs.getInt(KEY_X, defaultX)
+        val savedY = prefs.getInt(KEY_Y, defaultY)
+        lp.x = savedX.coerceIn(0, (dm.widthPixels - lp.width).coerceAtLeast(0))
+        lp.y = savedY.coerceIn(0, (dm.heightPixels - dp(ctx, 120f).toInt()).coerceAtLeast(0))
         params = lp
 
         // Drag anywhere on the header — unless the panel is pinned.
@@ -217,6 +228,12 @@ object FloatingOverlayManager {
                     lp.y = (startY + (ev.rawY - startRawY)).toInt()
                     windowManager.updateViewLayout(panel, lp)
                     true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    if (lp.x != startX || lp.y != startY) {
+                        prefs.edit().putInt(KEY_X, lp.x).putInt(KEY_Y, lp.y).apply()
+                    }
+                    false
                 }
                 else -> false
             }
@@ -316,11 +333,18 @@ object FloatingOverlayManager {
         renderTitle()
     }
 
+    /** Minutes until the auto-stop timer ends the session; 0 hides the hint. */
+    fun setAutoStopMinutes(minutes: Int) {
+        autoStopMinutes = minutes
+        renderTitle()
+    }
+
     private fun renderTitle() {
         val parts = mutableListOf("LensTranslate")
         if (status.isNotEmpty()) parts.add(status)
         else if (detectedLang.isNotEmpty()) parts.add(detectedLang)
         if (pinned) parts.add("Pinned")
+        if (autoStopMinutes > 0) parts.add("${autoStopMinutes}m left")
         titleView?.text = parts.joinToString(" • ")
     }
 
@@ -360,6 +384,7 @@ object FloatingOverlayManager {
         chipLangs = emptyList()
         params = null
         pinned = false
+        autoStopMinutes = 0
     }
 
     private fun dp(ctx: Context, v: Float): Float =
